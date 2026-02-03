@@ -19,7 +19,8 @@ from utils import (
     PerformanceMonitor,
     format_feedback_message,
     create_accuracy_visualization,
-    display_progress_with_eta
+    display_progress_with_eta,
+    validate_boxing_content
 )
 
 # Set page configuration
@@ -98,6 +99,9 @@ def video_comparison_interface(frame_rate: int, max_frames: int):
             type=['mp4', 'mov', 'avi'],
             key="ref_video"
         )
+
+        if ref_video:
+            st.video(ref_video)
 
     with col2:
         st.subheader("👤 User Video")
@@ -203,6 +207,50 @@ def analyze_video_comparison(ref_video, user_video, frame_rate: int, max_frames:
     with progress_container:
         st.subheader("🔄️ Processing Videos...")
 
+        # Validate reference video
+        st.info("Validating reference video for boxing content...")
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+            tmp_file.write(ref_video.getvalue())
+            ref_video_path = tmp_file.name
+        
+        try:
+            is_boxing, confidence, reason = validate_boxing_content(
+                ref_video_path, st.session_state.pose_estimator
+            )
+            if not is_boxing:
+                st.error(f"❌ Reference Video Validation Failed: {reason}")
+                st.warning(f"Confidence Score: {confidence:.1f}%")
+                st.info("💡 Please upload a video that contains boxing techniques.")
+                os.unlink(ref_video_path)
+                return
+            else:
+                st.success(f"✅ Reference video validated (Confidence: {confidence:.1f}%)")
+        finally:
+            if os.path.exists(ref_video_path):
+                os.unlink(ref_video_path)
+
+        # Validate user video
+        st.info("Validating user video for boxing content...")
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+            tmp_file.write(user_video.getvalue())
+            user_video_path = tmp_file.name
+        
+        try:
+            is_boxing, confidence, reason = validate_boxing_content(
+                user_video_path, st.session_state.pose_estimator
+            )
+            if not is_boxing:
+                st.error(f"❌ User Video Validation Failed: {reason}")
+                st.warning(f"Confidence Score: {confidence:.1f}%")
+                st.info("💡 Please upload a video that contains boxing techniques.")
+                os.unlink(user_video_path)
+                return
+            else:
+                st.success(f"✅ User video validated (Confidence: {confidence:.1f}%)")
+        finally:
+            if os.path.exists(user_video_path):
+                os.unlink(user_video_path)
+
         # Process reference video
         st.info("Processing reference video...")
         ref_poses, ref_frames = process_video(ref_video, frame_rate, max_frames, "reference")
@@ -244,6 +292,28 @@ def analyze_technique(user_video, technique: str, frame_rate: int, max_frames: i
 
     with progress_container:
         st.subheader("🔄️ Analyzing Technique...")
+
+        # Validate user video for boxing content
+        st.info("Validating video for boxing content...")
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+            tmp_file.write(user_video.getvalue())
+            user_video_path = tmp_file.name
+        
+        try:
+            is_boxing, confidence, reason = validate_boxing_content(
+                user_video_path, st.session_state.pose_estimator
+            )
+            if not is_boxing:
+                st.error(f"❌ Video Validation Failed: {reason}")
+                st.warning(f"Confidence Score: {confidence:.1f}%")
+                st.info("💡 Please upload a video that contains boxing techniques.")
+                os.unlink(user_video_path)
+                return
+            else:
+                st.success(f"✅ Video validated (Confidence: {confidence:.1f}%)")
+        finally:
+            if os.path.exists(user_video_path):
+                os.unlink(user_video_path)
 
         # Process user video
         st.info("Processing your video...")
@@ -325,13 +395,13 @@ def display_comparison_results(comparison_result: Dict, ref_frames: List, user_f
         st.plotly_chart(fig, width='stretch')
     
     # Frame-by-frame comparison
-    st.subheader("🎞️ Frame-by-Frame Aanlysis")
+    st.subheader("🎞️ Frame-by-Frame Analysis")
 
     if ref_frames and user_frames:
         min_frames = min(len(ref_frames), len(user_frames))
 
         if min_frames > 0:
-            frame_idx = st.slider("Select Frame", 0, min_frames - 1, min_frames // 2)
+            frame_idx = min_frames // 2 # st.slider("Select Frame", 0, min_frames - 1, min_frames // 2)
             col1, col2 = st.columns(2)
 
             with col1:

@@ -268,3 +268,152 @@ def display_progress_with_eta(current: int, total: int, start_time: float, opera
     progress = 0 if total == 0 else current / total
     progress = min(max(progress, 0), 1)
     st.progress(progress, text=f"{operation}: {current}/{total}{eta_text}")
+
+def validate_boxing_content(video_path: str, pose_estimator, sample_frames: int = 10) -> Tuple[bool, float, str]:
+    """
+    Validate if a video contains boxing-related content by analyzing pose characteristics.
+    
+    Args:
+        video_path: Path to the video file
+        pose_estimator: PoseEstimator instance
+        sample_frames: Number of frames to sample for validation
+        
+    Returns:
+        Tuple of (is_boxing, confidence_score, reason)
+        - is_boxing: Boolean indicating if boxing content is detected
+        - confidence_score: Confidence score (0-100)
+        - reason: Explanation of the validation result
+    """
+    import cv2
+    
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return False, 0.0, "Failed to open video"
+    
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames == 0:
+        cap.release()
+        return False, 0.0, "Video has no frames"
+    
+    # Sample frames evenly throughout the video
+    frame_indices = np.linspace(0, total_frames - 1, min(sample_frames, total_frames), dtype=int)
+    
+    poses = []
+    valid_pose_count = 0
+    
+    for frame_idx in frame_indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        
+        # Estimate pose
+        pose_data = pose_estimator.estimate_pose(frame)
+        if pose_data and pose_data.get('angles'):
+            poses.append(pose_data)
+            valid_pose_count += 1
+    
+    cap.release()
+    
+    if valid_pose_count < 3:
+        return False, 0.0, "Insufficient valid poses detected. Please ensure the video shows a person clearly."
+    
+    # Analyze poses for boxing characteristics
+    boxing_indicators = {
+        'guard_position': 0,      # Arms up in guard position
+        'punching_motion': 0,     # Arm extension patterns
+        'boxing_stance': 0,        # Body rotation and stance
+        'arm_movement': 0          # Dynamic arm movements
+    }
+    
+    total_score = 0
+    max_score = 0
+    
+    for pose in poses:
+        angles = pose.get('angles', {})
+        landmarks = pose.get('landmarks', {})
+        
+        # Check 1: Guard position (elbows bent, hands near face level)
+        left_elbow_angle = angles.get('left_elbow_angle', 180)
+        right_elbow_angle = angles.get('right_elbow_angle', 180)
+        
+        # Guard position: elbows should be bent (angle < 160 degrees)
+        # and hands should be elevated (wrist y < shoulder y)
+        guard_score = 0
+        if left_elbow_angle < 160 and 'left_wrist' in landmarks and 'left_shoulder' in landmarks:
+            if landmarks['left_wrist']['y'] < landmarks['left_shoulder']['y'] + 0.2:
+                guard_score += 0.5
+        if right_elbow_angle < 160 and 'right_wrist' in landmarks and 'right_shoulder' in landmarks:
+            if landmarks['right_wrist']['y'] < landmarks['right_shoulder']['y'] + 0.2:
+                guard_score += 0.5
+        
+        boxing_indicators['guard_position'] += guard_score
+        total_score += guard_score
+        max_score += 1.0
+        
+        # Check 2: Punching motion (arm extension)
+        # Punching: one arm extended (elbow angle > 140), other in guard
+        punch_score = 0
+        if left_elbow_angle > 140 and right_elbow_angle < 160:
+            punch_score = 0.5
+        elif right_elbow_angle > 140 and left_elbow_angle < 160:
+            punch_score = 0.5
+        elif left_elbow_angle > 140 or right_elbow_angle > 140:
+            punch_score = 0.3
+        
+        boxing_indicators['punching_motion'] += punch_score
+        total_score += punch_score
+        max_score += 1.0
+        
+        # Check 3: Boxing stance (body rotation)
+        body_rotation = angles.get('body_rotation', 0)
+        # Boxing involves body rotation (typically 5-30 degrees)
+        stance_score = 0
+        if 5 <= body_rotation <= 45:
+            stance_score = 0.5
+        elif body_rotation > 0:
+            stance_score = 0.3
+        
+        boxing_indicators['boxing_stance'] += stance_score
+        total_score += stance_score
+        max_score += 1.0
+        
+        # Check 4: Arm movement patterns (check if arms are actively moving)
+        # This is checked across frames, so we'll analyze the sequence
+        boxing_indicators['arm_movement'] += 0.25  # Base score for having arms detected
+        total_score += 0.25
+        max_score += 1.0
+    
+    # Calculate confidence score
+    if max_score == 0:
+        confidence = 0.0
+    else:
+        confidence = (total_score / max_score) * 100
+    
+    # Check for dynamic movement (variation in arm positions across frames)
+    if len(poses) > 1:
+        elbow_angles_left = [p.get('angles', {}).get('left_elbow_angle', 0) for p in poses]
+        elbow_angles_right = [p.get('angles', {}).get('right_elbow_angle', 0) for p in poses]
+        
+        left_variance = np.var(elbow_angles_left) if elbow_angles_left else 0
+        right_variance = np.var(elbow_angles_right) if elbow_angles_right else 0
+        
+        # Boxing involves dynamic movement, so variance should be significant
+        if left_variance > 100 or right_variance > 100:
+            confidence += 10  # Bonus for dynamic movement
+            confidence = min(confidence, 100)
+    
+    # Determine if boxing content is detected
+    is_boxing = confidence >= 40.0  # Threshold: 40% confidence
+    
+    # Generate reason
+    if confidence < 20:
+        reason = "No boxing content detected. The video does not show boxing poses or movements."
+    elif confidence < 40:
+        reason = "Low confidence: The video may not contain boxing content. Please ensure the video shows boxing techniques."
+    elif confidence < 60:
+        reason = "Moderate confidence: Some boxing characteristics detected, but the content may not be primarily boxing."
+    else:
+        reason = "Boxing content detected. Proceeding with analysis."
+    
+    return is_boxing, confidence, reason

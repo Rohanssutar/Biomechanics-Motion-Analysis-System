@@ -37,7 +37,7 @@ pip install -r requirements.txt
 - Run the Streamlit app (development):
 
 ```bash
-streamlit run app.py
+streamlit run app.py --server.address localhost --server.port 5000
 ```
 
 - For quick script-based processing (examples):

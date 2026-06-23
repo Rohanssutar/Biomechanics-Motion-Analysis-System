@@ -57,7 +57,7 @@ def main():
     # Analysis mode selection
     analysis_mode = st.sidebar.selectbox(
         "Analysis Mode",
-        ["Video vs Video Comparison", "Technique Analysis Against Reference", "Real-time Camera Analysis"]
+        ["Side-by-Side Comparison", "User Form Analysis", "Live Camera Analysis"]
     )
 
     # Frame rate settings
@@ -78,9 +78,9 @@ def main():
         help="Limit processing to prevent memory issues"
     )
 
-    if analysis_mode == "Video vs Video Comparison":
+    if analysis_mode == "Side-by-Side Comparison":
         video_comparison_interface(frame_rate, max_frames)
-    elif analysis_mode == "Technique Analysis Against Reference":
+    elif analysis_mode == "User Form Analysis":
         technique_analysis_interface(frame_rate, max_frames)
     else:
         realtime_camera_interface(frame_rate)
@@ -115,8 +115,18 @@ def video_comparison_interface(frame_rate: int, max_frames: int):
             st.video(user_video)
     
     if ref_video and user_video:
-        if st.button("🔍 Start Analysis", type="primary", width='stretch'):
+        if st.button("🔍 Start Analysis", type="primary", use_container_width=True):
             analyze_video_comparison(ref_video, user_video, frame_rate, max_frames)
+
+    # Always show the latest comparison if available (no re-processing)
+    if "comparison_result" in st.session_state:
+        display_comparison_results(
+            st.session_state.comparison_result,
+            st.session_state.ref_frames,
+            st.session_state.user_frames,
+            st.session_state.ref_poses,
+            st.session_state.user_poses,
+        )
 
 def technique_analysis_interface(frame_rate: int, max_frames: int):
     st.header("🎯 Technique Analysis")
@@ -149,7 +159,7 @@ def technique_analysis_interface(frame_rate: int, max_frames: int):
     if user_video:
         st.video(user_video)
 
-        if st.button("🔍 Analysis Technique", type="primary", width='stretch'):
+        if st.button("🔍 Analysis Technique", type="primary", use_container_width=True):
             analyze_technique(user_video, selected_technique, frame_rate, max_frames)
 
 def realtime_camera_interface(frame_rate: int):
@@ -177,10 +187,10 @@ def realtime_camera_interface(frame_rate: int):
     col1, col2 = st.columns([1,1])
 
     with col1:
-        start_camera = st.button("📹 Start Camera", type="primary", width='stretch')
+        start_camera = st.button("📹 Start Camera", type="primary", use_container_width=True)
 
     with col2:
-        stop_camera = st.button("⏹️ Stop Camera", width='stretch')
+        stop_camera = st.button("⏹️ Stop Camera", use_container_width=True)
     
     # Initialize session state for camera
     if 'camera_active' not in st.session_state:
@@ -277,11 +287,18 @@ def analyze_video_comparison(ref_video, user_video, frame_rate: int, max_frames:
 
     progress_container.empty()
 
-    with results_container:
-        display_comparison_results(comparison_result, ref_frames, user_frames, ref_poses, user_poses)
+    # Store results in session state so we can reuse them without reprocessing
+    st.session_state.comparison_result = comparison_result
+    st.session_state.ref_frames = ref_frames
+    st.session_state.user_frames = user_frames
+    st.session_state.ref_poses = ref_poses
+    st.session_state.user_poses = user_poses
 
     processing_time = st.session_state.performance_monitor.end_timer("video_comparison")
     st.sidebar.success(f"⏱️ Processing completed in {processing_time:.2f}s")
+
+    # processing_time = st.session_state.performance_monitor.end_timer("video_comparison")
+    # st.sidebar.success(f"⏱️ Processing completed in {processing_time:.2f}s")
 
 def analyze_technique(user_video, technique: str, frame_rate: int, max_frames: int):
     # Analyze user technique against reference.
@@ -353,80 +370,129 @@ def process_video(video_file, frame_rate: int, max_frames: int, video_type: str)
     finally:
         os.unlink(video_path)
 
-def display_comparison_results(comparison_result: Dict, ref_frames: List, user_frames: List, ref_poses: List, user_poses: List):
+# ... existing imports and code ...
+
+def display_comparison_results(
+    comparison_result: Dict,
+    ref_frames: List,
+    user_frames: List,
+    ref_poses: List,
+    user_poses: List,
+):
     st.header("📊 Comparison Results")
 
-    if 'error' in comparison_result:
+    if "error" in comparison_result:
         st.error(f"Analysis Error: {comparison_result['error']}")
         return
-    
-    overall_similarity = comparison_result.get('overall_similarity', 0)
+
+    overall_similarity = comparison_result.get("overall_similarity", 0)
 
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Overall Similarity", f"{overall_similarity:.1f}%")
     with col2:
-        st.metric("Frames Compared", comparison_result.get('frames_compared', 0))
+        st.metric("Frames Compared", comparison_result.get("frames_compared", 0))
     with col3:
         similarity_color = "🟢" if overall_similarity >= 70 else "🟡" if overall_similarity >= 50 else "🔴"
-        st.metric("Quality", f"{similarity_color} {'Excellent' if overall_similarity >= 70 else 'Good' if overall_similarity >= 50 else 'Needs Work'}")
+        st.metric(
+            "Quality",
+            f"{similarity_color} "
+            f"{'Excellent' if overall_similarity >= 70 else 'Good' if overall_similarity >= 50 else 'Needs Work'}",
+        )
 
     # Joint Similarities chart
-    joint_similarities = comparison_result.get('joint_similarities', {})
+    joint_similarities = comparison_result.get("joint_similarities", {})
     if joint_similarities:
         st.subheader("🦴 Joint Analysis")
 
-        # Bar chart
-        fig = go.Figure(data=[
-            go.Bar(
-                x=list(joint_similarities.keys()),
-                y=list(joint_similarities.values()),
-                marker_color=['green' if v >= 70 else 'orange' if v >= 50 else 'red' for v in joint_similarities.values()]
-            )
-        ])
+        fig = go.Figure(
+            data=[
+                go.Bar(
+                    x=list(joint_similarities.keys()),
+                    y=list(joint_similarities.values()),
+                    marker_color=[
+                        "green" if v >= 70 else "orange" if v >= 50 else "red"
+                        for v in joint_similarities.values()
+                    ],
+                )
+            ]
+        )
 
         fig.update_layout(
             title="Joint Similarity Scores",
             xaxis_title="Body Joints",
             yaxis_title="Similarity (%)",
-            yaxis=dict(range=[0, 100])
+            yaxis=dict(range=[0, 100]),
         )
 
-        st.plotly_chart(fig, width='stretch')
-    
-    # Frame-by-frame comparison
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Frame-by-frame comparison
     st.subheader("🎞️ Frame-by-Frame Analysis")
 
     if ref_frames and user_frames:
-        min_frames = min(len(ref_frames), len(user_frames))
+        # Max usable frames for each side (respecting both frames and poses)
+        ref_max = min(len(ref_frames), len(ref_poses))
+        user_max = min(len(user_frames), len(user_poses))
 
-        if min_frames > 0:
-            frame_idx = min_frames // 2 # st.slider("Select Frame", 0, min_frames - 1, min_frames // 2)
+        if ref_max > 0 and user_max > 0:
+            # Separate sliders: one for reference, one for user
+            slider_col_ref, slider_col_user = st.columns(2)
+
+            with slider_col_ref:
+                ref_idx = st.slider(
+                    "Reference frame",
+                    0,
+                    ref_max - 1,
+                    ref_max // 2,
+                    key="ref_frame_slider",
+                )
+
+            with slider_col_user:
+                user_idx = st.slider(
+                    "User frame",
+                    0,
+                    user_max - 1,
+                    user_max // 2,
+                    key="user_frame_slider",
+                )
+
+            # Display frames side by side
             col1, col2 = st.columns(2)
 
             with col1:
                 st.write("**Reference Video**")
-                if frame_idx < len(ref_frames):
-                    annoted_ref = st.session_state.pose_estimator.draw_pose(
-                        ref_frames[frame_idx], ref_poses[frame_idx]
-                    )
-                    st.image(cv2.cvtColor(annoted_ref, cv2.COLOR_BGR2RGB))
+                ref_frame = ref_frames[ref_idx]
+                ref_pose = ref_poses[ref_idx] if ref_idx < len(ref_poses) else None
+
+                if ref_pose:
+                    annotated_ref = st.session_state.pose_estimator.draw_pose(ref_frame, ref_pose)
+                    st.image(cv2.cvtColor(annotated_ref, cv2.COLOR_BGR2RGB))
                 else:
-                    st.image(cv2.cvtColor(ref_frames[frame_idx], cv2.COLOR_BGR2RGB))
-            
+                    st.image(cv2.cvtColor(ref_frame, cv2.COLOR_BGR2RGB))
+
             with col2:
                 st.write("**User Video**")
-                if frame_idx < len(user_frames):
-                    differences = calculate_frame_differences(
-                        ref_poses[frame_idx] if frame_idx < len(ref_poses) else None,
-                        user_poses[frame_idx]
+                user_frame = user_frames[user_idx]
+                user_pose = user_poses[user_idx] if user_idx < len(user_poses) else None
+
+                if user_pose:
+                    # Compare the currently selected reference and user frames
+                    differences = {}
+                    if ref_pose:
+                        differences = calculate_frame_differences(ref_pose, user_pose)
+
+                    annotated_user = st.session_state.pose_estimator.draw_pose(
+                        user_frame,
+                        user_pose,
+                        differences,
                     )
-                    annoted_user = st.session_state.pose_estimator.draw_pose(
-                        user_frames[frame_idx], user_poses[frame_idx], differences
-                    )
-                    st.image(cv2.cvtColor(annoted_user, cv2.COLOR_BGR2RGB))
+                    st.image(cv2.cvtColor(annotated_user, cv2.COLOR_BGR2RGB))
                 else:
-                    st.image(cv2.cvtColor(user_frames[frame_idx], cv2.COLOR_BGR2RGB))
+                    st.image(cv2.cvtColor(user_frame, cv2.COLOR_BGR2RGB))
+
+
+
 
 def display_technique_results(analysis_result: Dict, user_frames: List, user_poses: List, technique: str):
     # Display technique analysis results.
@@ -471,7 +537,7 @@ def display_technique_results(analysis_result: Dict, user_frames: List, user_pos
             yaxis_title="Accuracy (%)",
             yaxis=dict(range=[0, 100])
         )
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
     
     feedback = analysis_result.get('feedback', {})
     if feedback:
@@ -480,7 +546,7 @@ def display_technique_results(analysis_result: Dict, user_frames: List, user_pos
         st.markdown(formatted_feedback)
 
     # Best frame analysis
-    best_frame_idx = analysis_result.get('best_frame_index', 0)
+    best_frame_idx = analysis_result.get('best_frame_idx', 0)
     if user_frames and user_poses and best_frame_idx < len(user_frames):
         st.subheader("🎯 Best Frame Analysis")
         st.write(f"Frame {best_frame_idx + 1} shows your best technique execution")
@@ -513,20 +579,21 @@ def display_technique_results(analysis_result: Dict, user_frames: List, user_pos
             yaxis_title="Accuracy (%)",
             yaxis=dict(range=[0, 100])
         )
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
 
-def calculate_frame_differences(ref_pose: Optional[Dict], user_pose: Dict):
+def calculate_frame_differences(ref_pose: Optional[Dict], user_pose: Dict) -> Dict[str, float]:
     if not ref_pose or not user_pose:
         return {}
-    
-    ref_angles = ref_pose.get('anagles', {})
-    user_angles = user_pose.get('angles', {})
 
-    differences = {}
-    for angle_name in ref_angles:
+    # fixed key: 'angles' (was 'anagles')
+    ref_angles = ref_pose.get("angles", {})
+    user_angles = user_pose.get("angles", {})
+
+    differences: Dict[str, float] = {}
+    for angle_name, ref_val in ref_angles.items():
         if angle_name in user_angles:
-            diff = abs(ref_angles[angle_name] - user_angles[angle_name])
-            differences[angle_name] = diff
+            differences[angle_name] = abs(ref_val - user_angles[angle_name])
+
     return differences
 
 def run_realtime_analysis(technique: str, frame_rate: int):
@@ -611,7 +678,11 @@ def run_realtime_analysis(technique: str, frame_rate: int):
             
             # Update video display
             with video_container.container():
-                st.image(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB), channels="RGB", width='stretch')
+                st.image(
+                    cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB),
+                    channels="RGB",
+                    use_container_width=True,  # or use_container_width=True on newer Streamlit
+                )
             
             # Update metrics
             if pose_data:

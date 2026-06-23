@@ -146,7 +146,7 @@ class BoxingAnalyzer:
         feedback = {
             'arm_positioning': [],
             'body_alignment': [],
-            'punch_alignment': [], 
+            'punch_technique': [], 
             'general_tips': []
         }
 
@@ -169,13 +169,13 @@ class BoxingAnalyzer:
                 feedback['arm_positioning'].append("right arm is overextended - maintain slight bend in elbow")
 
         # Analyze shoulder positioning
-        if 'left_shoulder_angle' in joint_accuracies and joint_accuracies['left_shoulder_angle']:
+        if 'left_shoulder_angle' in joint_accuracies and joint_accuracies['left_shoulder_angle'] < 70:
             feedback['arm_positioning'].append("Left shoulder position needs adjustment - focus on proper shoulder rotation")
         
-        if 'right_shoulder_angle' in joint_accuracies and joint_accuracies['right_shoulder_angle']:
+        if 'right_shoulder_angle' in joint_accuracies and joint_accuracies['right_shoulder_angle'] < 70:
             feedback['arm_positioning'].append("Right shoulder position needs adjustment - focus on proper shoulder rotation")
 
-        if 'body_rotation' in joint_accuracies and joint_accuracies['body_rotation']:
+        if 'body_rotation' in joint_accuracies and joint_accuracies['body_rotation'] < 70:
             feedback['body_alignment'].append("Body rotation is incorrect - practice proper hip and shoulder coordination")
 
         # Analyze punch extension
@@ -332,13 +332,13 @@ class BoxingAnalyzer:
             'left_elbow_angle': {
                 'name': 'Left Elbow',
                 'high_diff': 'Left arm extension is significantly different from references',
-                'med_diff': 'Left elbow angle needs adjustment',
+                'mid_diff': 'Left elbow angle needs adjustment',
                 'suggestion': 'Focus on matching the reference arm extension during punch'
             },
             'right_elbow_angle': {
                 'name': 'Right Elbow',
                 'high_diff': 'Right arm extension differs significantly different from reference',
-                'med_diff': 'Right elbow angle needs adjustment',
+                'mid_diff': 'Right elbow angle needs adjustment',
                 'suggestion': 'Practice matching the reference right arm position'
             },
             'left_shoulder_angle': {

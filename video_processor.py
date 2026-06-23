@@ -112,8 +112,8 @@ class VideoProcessor:
             return False
         
         min_frames = min(len(frames1), len(frames2))
-        frame_height = max(frames1[0].shape[0] + frames2[0].shape[0])
-        frame_width = frames1[0].shape[1] + frames2.shape[1]
+        frame_height = max(frames1[0].shape[0], frames2[0].shape[0])
+        frame_width = frames1[0].shape[1] + frames2[0].shape[1]
 
         # Initialize video writer
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -150,7 +150,7 @@ class VideoProcessor:
     def get_frame_At_time(self, video_path: str, time_seconds: float) -> Optional[np.ndarray]:
         cap = cv2.VideoCapture(video_path)
 
-        if not cap.isOpened:
+        if not cap.isOpened():
             return None
         
         try:
@@ -167,7 +167,7 @@ class VideoProcessor:
     def extract_key_frames(self, video_path: str, num_frames: int = 5) -> List[np.ndarray]:
         cap = cv2.VideoCapture(video_path)
 
-        if not cap.isOpened:
+        if not cap.isOpened():
             return []
         
         try:

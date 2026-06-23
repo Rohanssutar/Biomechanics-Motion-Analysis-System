@@ -173,7 +173,7 @@ def detect_key_frames(angle_sequences: Dict[str, List[float]], technique: str) -
 
     for i in range(1, len(derivatives) - 1):
         if (derivatives[i] > derivatives[i-1] and derivatives[i] > derivatives[i+1]) or \
-           (derivatives[i] > derivatives[i-1] and derivatives[i] > derivatives[i+1]):
+           (derivatives[i] < derivatives[i-1] and derivatives[i] < derivatives[i+1]):
             key_frames.append(i)
 
     key_frames = [0] + key_frames + [len(angles) - 1]
@@ -232,7 +232,7 @@ def validate_pose_data(pose_data: Dict) -> bool:
         return False
     
     landmarks = pose_data['landmarks']
-    required_landmarks = ['left_shoulder', 'right_right_shoulder', 'left_elbow', 'right_elbow']
+    required_landmarks = ['left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow']
 
     if not all(landmark in landmarks for landmark in required_landmarks):
         return False
@@ -269,20 +269,9 @@ def display_progress_with_eta(current: int, total: int, start_time: float, opera
     progress = min(max(progress, 0), 1)
     st.progress(progress, text=f"{operation}: {current}/{total}{eta_text}")
 
-def validate_boxing_content(video_path: str, pose_estimator, sample_frames: int = 10) -> Tuple[bool, float, str]:
+def validate_boxing_content(video_path: str, pose_estimator, sample_frames: int = 30) -> Tuple[bool, float, str]:
     """
-    Validate if a video contains boxing-related content by analyzing pose characteristics.
-    
-    Args:
-        video_path: Path to the video file
-        pose_estimator: PoseEstimator instance
-        sample_frames: Number of frames to sample for validation
-        
-    Returns:
-        Tuple of (is_boxing, confidence_score, reason)
-        - is_boxing: Boolean indicating if boxing content is detected
-        - confidence_score: Confidence score (0-100)
-        - reason: Explanation of the validation result
+    Strict validation: requires actual boxing movements, not just poses.
     """
     import cv2
     
@@ -295,19 +284,18 @@ def validate_boxing_content(video_path: str, pose_estimator, sample_frames: int 
         cap.release()
         return False, 0.0, "Video has no frames"
     
-    # Sample frames evenly throughout the video
+    # Sample more frames for better detection
     frame_indices = np.linspace(0, total_frames - 1, min(sample_frames, total_frames), dtype=int)
     
     poses = []
     valid_pose_count = 0
     
     for frame_idx in frame_indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
         ret, frame = cap.read()
         if not ret:
             continue
         
-        # Estimate pose
         pose_data = pose_estimator.estimate_pose(frame)
         if pose_data and pose_data.get('angles'):
             poses.append(pose_data)
@@ -315,105 +303,113 @@ def validate_boxing_content(video_path: str, pose_estimator, sample_frames: int 
     
     cap.release()
     
-    if valid_pose_count < 3:
+    if valid_pose_count < 5:  # Require at least 5 valid poses
         return False, 0.0, "Insufficient valid poses detected. Please ensure the video shows a person clearly."
     
-    # Analyze poses for boxing characteristics
-    boxing_indicators = {
-        'guard_position': 0,      # Arms up in guard position
-        'punching_motion': 0,     # Arm extension patterns
-        'boxing_stance': 0,        # Body rotation and stance
-        'arm_movement': 0          # Dynamic arm movements
-    }
+    # Track boxing indicators more strictly
+    punch_like_frames = 0  # Frames showing actual punch pattern
+    guard_frames = 0       # Frames showing guard position
+    motion_variance = []   # Track arm movement variance
     
-    total_score = 0
-    max_score = 0
+    elbow_angles_left = []
+    elbow_angles_right = []
     
     for pose in poses:
         angles = pose.get('angles', {})
         landmarks = pose.get('landmarks', {})
         
-        # Check 1: Guard position (elbows bent, hands near face level)
-        left_elbow_angle = angles.get('left_elbow_angle', 180)
-        right_elbow_angle = angles.get('right_elbow_angle', 180)
+        le = angles.get('left_elbow_angle', 180)
+        re = angles.get('right_elbow_angle', 180)
         
-        # Guard position: elbows should be bent (angle < 160 degrees)
-        # and hands should be elevated (wrist y < shoulder y)
-        guard_score = 0
-        if left_elbow_angle < 160 and 'left_wrist' in landmarks and 'left_shoulder' in landmarks:
-            if landmarks['left_wrist']['y'] < landmarks['left_shoulder']['y'] + 0.2:
-                guard_score += 0.5
-        if right_elbow_angle < 160 and 'right_wrist' in landmarks and 'right_shoulder' in landmarks:
-            if landmarks['right_wrist']['y'] < landmarks['right_shoulder']['y'] + 0.2:
-                guard_score += 0.5
+        elbow_angles_left.append(le)
+        elbow_angles_right.append(re)
         
-        boxing_indicators['guard_position'] += guard_score
-        total_score += guard_score
-        max_score += 1.0
+        # STRICT: Punch-like frame = one arm clearly extended (>150), other clearly bent (<130)
+        # This is the key boxing pattern
+        is_punch_like = False
+        if le > 150 and re < 130:  # Left punch
+            is_punch_like = True
+        elif re > 150 and le < 130:  # Right punch
+            is_punch_like = True
         
-        # Check 2: Punching motion (arm extension)
-        # Punching: one arm extended (elbow angle > 140), other in guard
-        punch_score = 0
-        if left_elbow_angle > 140 and right_elbow_angle < 160:
-            punch_score = 0.5
-        elif right_elbow_angle > 140 and left_elbow_angle < 160:
-            punch_score = 0.5
-        elif left_elbow_angle > 140 or right_elbow_angle > 140:
-            punch_score = 0.3
+        if is_punch_like:
+            punch_like_frames += 1
         
-        boxing_indicators['punching_motion'] += punch_score
-        total_score += punch_score
-        max_score += 1.0
+        # Guard position: both arms bent, hands elevated
+        is_guard = False
+        if le < 160 and re < 160:
+            if 'left_wrist' in landmarks and 'right_wrist' in landmarks:
+                if 'left_shoulder' in landmarks and 'right_shoulder' in landmarks:
+                    left_hand_up = landmarks['left_wrist']['y'] < landmarks['left_shoulder']['y'] + 0.15
+                    right_hand_up = landmarks['right_wrist']['y'] < landmarks['right_shoulder']['y'] + 0.15
+                    if left_hand_up and right_hand_up:
+                        is_guard = True
         
-        # Check 3: Boxing stance (body rotation)
-        body_rotation = angles.get('body_rotation', 0)
-        # Boxing involves body rotation (typically 5-30 degrees)
-        stance_score = 0
-        if 5 <= body_rotation <= 45:
-            stance_score = 0.5
-        elif body_rotation > 0:
-            stance_score = 0.3
-        
-        boxing_indicators['boxing_stance'] += stance_score
-        total_score += stance_score
-        max_score += 1.0
-        
-        # Check 4: Arm movement patterns (check if arms are actively moving)
-        # This is checked across frames, so we'll analyze the sequence
-        boxing_indicators['arm_movement'] += 0.25  # Base score for having arms detected
-        total_score += 0.25
-        max_score += 1.0
+        if is_guard:
+            guard_frames += 1
     
-    # Calculate confidence score
-    if max_score == 0:
-        confidence = 0.0
-    else:
-        confidence = (total_score / max_score) * 100
+    # Calculate motion variance (boxing requires dynamic movement)
+    left_var = np.var(elbow_angles_left) if len(elbow_angles_left) > 1 else 0
+    right_var = np.var(elbow_angles_right) if len(elbow_angles_right) > 1 else 0
+    max_variance = max(left_var, right_var)
     
-    # Check for dynamic movement (variation in arm positions across frames)
-    if len(poses) > 1:
-        elbow_angles_left = [p.get('angles', {}).get('left_elbow_angle', 0) for p in poses]
-        elbow_angles_right = [p.get('angles', {}).get('right_elbow_angle', 0) for p in poses]
-        
-        left_variance = np.var(elbow_angles_left) if elbow_angles_left else 0
-        right_variance = np.var(elbow_angles_right) if elbow_angles_right else 0
-        
-        # Boxing involves dynamic movement, so variance should be significant
-        if left_variance > 100 or right_variance > 100:
-            confidence += 10  # Bonus for dynamic movement
-            confidence = min(confidence, 100)
+    # Calculate ratios
+    punch_ratio = punch_like_frames / float(valid_pose_count)
+    guard_ratio = guard_frames / float(valid_pose_count)
     
-    # Determine if boxing content is detected
-    is_boxing = confidence >= 40.0  # Threshold: 40% confidence
+    # STRICT SCORING: Require multiple indicators
+    confidence = 0.0
     
-    # Generate reason
-    if confidence < 20:
-        reason = "No boxing content detected. The video does not show boxing poses or movements."
-    elif confidence < 40:
-        reason = "Low confidence: The video may not contain boxing content. Please ensure the video shows boxing techniques."
-    elif confidence < 60:
-        reason = "Moderate confidence: Some boxing characteristics detected, but the content may not be primarily boxing."
-    else:
-        reason = "Boxing content detected. Proceeding with analysis."
+    # 1. Punch-like frames are the strongest indicator (60% weight)
+    if punch_ratio > 0.3:  # At least 30% of frames show punch pattern
+        confidence += 60.0 * min(punch_ratio / 0.5, 1.0)  # Scale up to 60 points
+    elif punch_ratio > 0.15:  # Some punches detected
+        confidence += 30.0 * (punch_ratio / 0.15)
     
-    return is_boxing, confidence, reason
+    # 2. Guard position adds to confidence (20% weight)
+    if guard_ratio > 0.2:
+        confidence += 20.0 * min(guard_ratio / 0.4, 1.0)
+    
+    # 3. Motion variance (boxing is dynamic) - 20% weight
+    if max_variance > 200:  # Strong dynamic movement
+        confidence += 20.0
+    elif max_variance > 100:  # Moderate movement
+        confidence += 10.0
+    elif max_variance < 50:  # Too static - penalize
+        confidence *= 0.7  # Reduce confidence if too static
+    
+    # Cap at 100
+    confidence = min(confidence, 100.0)
+    
+    # STRICT THRESHOLD: Require at least 50% confidence AND some punch-like frames
+    is_boxing = confidence >= 50.0 and punch_ratio >= 0.15
+    
+    # Generate detailed reason
+    if not is_boxing:
+        if punch_ratio < 0.15:
+            reason = (
+                f"This video does not show clear boxing movements. "
+                f"Only {punch_ratio*100:.1f}% of frames showed punch-like patterns "
+                f"(need ≥15%). Overall confidence: {confidence:.1f}%."
+            )
+        elif max_variance < 50:
+            reason = (
+                f"The movements are too static to be boxing. "
+                f"Arm movement variance: {max_variance:.1f} (boxing requires dynamic motion). "
+                f"Confidence: {confidence:.1f}%."
+            )
+        else:
+            reason = (
+                f"Boxing confidence too low: {confidence:.1f}% (need ≥50%). "
+                f"Detected {punch_ratio*100:.1f}% punch-like frames and {guard_ratio*100:.1f}% guard frames."
+            )
+        return False, confidence, reason
+    
+    # Success case
+    reason = (
+        f"Boxing content validated. "
+        f"Detected {punch_ratio*100:.1f}% punch-like frames, {guard_ratio*100:.1f}% guard frames, "
+        f"with motion variance of {max_variance:.1f}. "
+        f"Confidence: {confidence:.1f}%."
+    )
+    return True, confidence, reason

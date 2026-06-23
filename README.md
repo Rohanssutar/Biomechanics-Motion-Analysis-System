@@ -1,53 +1,68 @@
+![Python](https://img.shields.io/badge/Python-3.8+-blue)
+![MediaPipe](https://img.shields.io/badge/MediaPipe-pose-green)
+![Streamlit](https://img.shields.io/badge/Streamlit-app-red)
+
 # Biomechanics Motion and Analysis System for Boxing
 
-## Overview
+Analyzes boxing technique in real-time using a single laptop camera — no expensive hardware needed. Powered by MediaPipe pose estimation, it scores your punches and gives actionable feedback compared to professional reference poses.
 
-This is a computer vision-powered boxing technique analyzer built with Streamlit that helps user improve their boxing form. The application uses MediaPipe pose estimation to analyze boxing movements in real-time, comparing user techniques against professional reference poses. It provides detailed feedback on form, accuracy scores, and technique improvement suggestions for common boxing punches (jab, cross, hook, uppercut)
+## Features
+- Real-time pose estimation (MediaPipe)
+- Video upload and offline analysis
+- Frame-by-Frame Analysis and scoring (jab, cross, hook, uppercut)
+- Visual feedback and interactive charts (Plotly)
+- Configurable processing rate and frame limits for performance
 
-## User Preferences
+## Requirements
+- Python 3.8+
+- See `requirements.txt` for the tested dependency set
 
-Preffered communication style: Simple, everyday language.
+## Installation
+1. Create and activate a virtual environment (recommended):
 
-## System Architecture
+```bash
+# Linux/Mac:
+source .venv/bin/activate
 
-### Frontend Architecture
-- **Framework**: Streamlit web application with wide layout configuration
-- **Interface Design**: Multi-column layout with expandable sidebar for analysis settings
-- **Real-time Visualization**: Plotly-based interactive charts for performance metrics and technique analysis
-- **Video Processing UI**: Upload interface with progress tracking and ETA display for video analysis
-- **Feedback System**: Color-coded accuracy indicators and detailed technique improvement suggestions
+# Windows:
+.venv\Scripts\activate    
+```
+2. Install dependencies:
 
-### Core Processing Pipeline
-- **Pose Estimation**: MediaPipe-based computer vision system optimized for upper body boxing movements
-- **Video Processing**: Frame extraciton with configurable frame rates(5-15 FPS) and maximum frame limits for performance
-- **Technique Analysis**: Rule-based system comparing user poses against professional reference angles
-- **Performance Monitoring**: Built-in timing and memory usage tracking with optimization features
+```bash
+pip install -r requirements.txt
+```
 
-### Data Architecture
-- **Pose Data Structure**: Dictionary-based landmark storage with calculated joint angles and body rotation metrics
-- **Reference System**: Pre-computed professional boxing pose templates with angle tolerances and scoring weights
-- **Analysis Pipeline**: Multi-stage comparison system with weighted scoring for different technique aspects
-- **Session Management**: Streamlit session state for maintaining analyze instances and user data
+## Usage
+- Run the Streamlit app (development):
 
-### Performance Optimizations
-- **Frame Rate Control**: Adjustable processing speeds to balance accuracy and performance
-- **Memory Management**: Frame limiting (150 max frames) and temporary file cleanup
-- **Model Complexity**: MediaPipe model complexity set to 1 for optimal speed / accuracy balance
-- **Image Processing**: Optimized frame preprocessing for pose detection accuracy
+```bash
+streamlit run app.py
+```
 
-## External Dependencies
+- For quick script-based processing (examples):
 
-### Computer Vision & ML
-- **MediaPipe**: Google's machine learning framework for pose estimation and landmark detection
-- **OpenCV (cv2)**: Video processing, frame manipulation, and computer vision operations
-- **NumPy**: Mathematical operations for pose analysis and angle calculations
+```bash
+python video_processor.py --input path/to/video.mp4 --output results.json
+```
 
-### Web Framework & Visualization
-- **Streamlit**: Main web application framework with built-in UI components
-- **Plotly**: Interactive data visualization for performance charts and analysis results
-- **PIL (Pillow)**: Image processing and format conversion utilities
+Adjust settings such as frame rate and max frames inside `video_processor.py` or via the Streamlit UI.
 
-### Data Processing
-- **Pandas**: Data structure management for analysis results and performance metrics
-- **TempFile/OS**: Temporary file handling for video uploads and processing
-- **PSUtil**: System performance monitoring (optional dependency for memory tracking)
+## Project Structure
+- `app.py` — Streamlit web app and UI entrypoint
+- `video_processor.py` — Video I/O, frame extraction, and batch analysis
+- `pose_estimator.py` — MediaPipe pose detection wrapper and utilities
+- `boxing_analyzer.py` — Technique analysis logic, scoring, and punch detection
+- `reference_poses.py` — Professional reference pose templates and tolerances
+- `utils.py` — Shared helpers (IO, angle math, plotting helpers)
+- `requirements.txt` — Python dependencies
+
+## Configuration
+- Tweak frame-rate, model complexity, and max frames in `video_processor.py` and `pose_estimator.py` for a speed/accuracy tradeoff.
+
+## Troubleshooting
+- If pose detection is poor, increase frame resolution or reduce processing FPS.
+- For high memory use, lower `MAX_FRAMES` or process shorter clips.
+
+## Contributing
+- Open an issue or submit a pull request with a clear description and tests or reproducible steps. Thank you :)

@@ -40,14 +40,6 @@ pip install -r requirements.txt
 streamlit run app.py --server.address localhost --server.port 5000
 ```
 
-- For quick script-based processing (examples):
-
-```bash
-python video_processor.py --input path/to/video.mp4 --output results.json
-```
-
-Adjust settings such as frame rate and max frames inside `video_processor.py` or via the Streamlit UI.
-
 ## Project Structure
 - `app.py` — Streamlit web app and UI entrypoint
 - `video_processor.py` — Video I/O, frame extraction, and batch analysis

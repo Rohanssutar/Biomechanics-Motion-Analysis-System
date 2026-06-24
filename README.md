@@ -1,4 +1,4 @@
-![Python](https://img.shields.io/badge/Python-3.8+-blue)
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-pose-green)
 ![Streamlit](https://img.shields.io/badge/Streamlit-app-red)
 
@@ -14,7 +14,7 @@ Analyzes boxing technique in real-time using a single laptop camera — no expen
 - Configurable processing rate and frame limits for performance
 
 ## Requirements
-- Python 3.8+
+- Python 3.11+
 - See `requirements.txt` for the tested dependency set
 
 ## Installation

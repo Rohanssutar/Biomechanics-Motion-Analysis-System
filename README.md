@@ -7,7 +7,7 @@
 Analyzes boxing technique in real-time using a single laptop camera — no expensive hardware needed. Powered by MediaPipe pose estimation, it scores your punches and gives actionable feedback compared to professional reference poses.
 
 ## Sample Video
-![Watch the Demo Video](Demo video.webm)
+[Watch the Demo Video](https://drive.google.com/drive/u/1/folders/1eXFMyucKqqrXIu5XmHkRUoxibJskCSs9)
 
 ## Features
 - Real-time pose estimation (MediaPipe)
